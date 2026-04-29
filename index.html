@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone Simulator — Advanced</title>
+  <meta name="description" content="Autonomous defence drone simulation — dynamic threats, real-time replanning, swarm coordination, multi-terrain 3D environment." />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ── Status strip ───────────────────────────────────────── -->
+  <div class="status-bar">
+    <span class="status-bar-left">Autonomous Defence Drone Simulator</span>
+    <div class="status-bar-right">
+      <span id="sys-clock">--:--:--</span>
+      <div class="sys-online"><span class="pulse-dot"></span>ONLINE</div>
+    </div>
+  </div>
+
+  <!-- ── 3-column layout ────────────────────────────────────── -->
+  <div class="main-layout">
+
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- LEFT panel — Configuration / Logs / Navigation      -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <aside class="side-panel left-panel">
+
+      <!-- ── Drone Configuration (accordion) ──────────────── -->
+      <div class="accordion-item open" id="acc-drone-config">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Drone Configuration</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+          <div class="specs-grid">
+
+            <div class="spec-item">
+              <label class="spec-label">Battery (mAh)</label>
+              <div class="spec-input-row">
+                <input type="range" id="spec-mah" min="1000" max="20000" step="100" value="5000" />
+                <span class="spec-val" id="val-mah">5000</span>
+              </div>
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Voltage</label>
+              <select id="spec-voltage" class="spec-select">
+                <option value="3.7">3.7 V — 1S</option>
+                <option value="7.4">7.4 V — 2S</option>
+                <option value="11.1">11.1 V — 3S</option>
+                <option value="14.8" selected>14.8 V — 4S</option>
+                <option value="22.2">22.2 V — 6S</option>
+              </select>
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Motor Power (W)</label>
+              <div class="spec-input-row">
+                <input type="range" id="spec-power" min="50" max="1000" step="10" value="200" />
+                <span class="spec-val" id="val-power">200</span>
+              </div>
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Speed (m/s)</label>
+              <div class="spec-input-row">
+                <input type="range" id="spec-speed" min="1" max="30" step="1" value="10" />
+                <span class="spec-val" id="val-speed">10</span>
+              </div>
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Cell Size (m / grid square)</label>
+              <input type="number" id="spec-cellsize" min="1" max="500" value="10" class="spec-number" />
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Payload (kg)</label>
+              <div class="spec-input-row">
+                <input type="range" id="spec-payload" min="0" max="5" step="0.1" value="0.5" />
+                <span class="spec-val" id="val-payload">0.5</span>
+              </div>
+            </div>
+
+            <div class="spec-item">
+              <label class="spec-label">Payload Type</label>
+              <select id="spec-payload-type" class="spec-select">
+                <option value="NORMAL" selected>NORMAL</option>
+                <option value="EXPLOSIVE">EXPLOSIVE</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Computed flight parameters -->
+          <div class="computed-params">
+            <div class="comp-row"><span>Energy</span>         <span id="comp-energy">—</span></div>
+            <div class="comp-row"><span>Eff. Power</span>    <span id="comp-eff-power">—</span></div>
+            <div class="comp-row"><span>Flight Time</span>   <span id="comp-flight">—</span></div>
+            <div class="comp-row"><span>Max Range</span>     <span id="comp-range">—</span></div>
+            <div class="comp-row"><span>Max Steps</span>     <span id="comp-maxsteps">—</span></div>
+            <div class="comp-row"><span>Step Duration</span> <span id="comp-step-dur">—</span></div>
+            <div class="comp-row"><span>Drain / Step</span>  <span id="comp-drain">—</span></div>
+          </div>
+
+          <button class="btn primary" id="btn-apply-specs">APPLY CONFIGURATION</button>
+        </div>
+      </div>
+
+      <!-- ── Event Log (accordion) ─────────────────────────── -->
+      <div class="accordion-item open" id="acc-event-log">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Event Log</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+          <div class="event-log" id="event-log">
+            <div class="log-entry">System initialised.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Navigation Engine (accordion, collapsed by default) -->
+      <div class="accordion-item" id="acc-nav-engine">
+        <button class="accordion-header" aria-expanded="false">
+          <span>Navigation Engine</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+          <div class="nav-info">
+            Algorithm:       <span>A* (8-directional, threat-aware)</span><br>
+            Heuristic:       <span>Chebyshev Distance</span><br>
+            Threat cells:    <span class="txt-threat">cost ×9 (priority scaled)</span><br>
+            Obstacle cells:  <span>cost ×3.5 — fly-over</span><br>
+            Safe corridors:  <span>cost ×0.5 — preferred</span><br>
+            Movement:        <span>8-directional (diagonal √2)</span>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- CENTRE — 3D Viewport                                -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <div class="viewport-col">
+      <div id="viewport"></div>
+
+      <!-- Manual control WASD HUD -->
+      <div id="manual-hud" class="manual-hud" aria-label="Manual controls">
+        <div class="manual-hud-label">MANUAL CONTROL</div>
+        <div class="manual-keys">
+          <div class="key-row"><kbd id="key-w">W</kbd></div>
+          <div class="key-row">
+            <kbd id="key-a">A</kbd>
+            <kbd id="key-s">S</kbd>
+            <kbd id="key-d">D</kbd>
+          </div>
+        </div>
+        <div class="key-hint">ARROW KEYS SUPPORTED</div>
+        <div class="key-hint" style="color:rgba(255,170,0,0.4);margin-top:3px">ESC → AUTO MODE</div>
+      </div>
+
+      <!-- Altitude Meter overlay -->
+      <div id="altitude-meter" class="altitude-meter" aria-label="Altitude gauge">
+        <div class="alt-header">ALT</div>
+        <div class="alt-scale-wrap">
+          <div class="alt-labels">
+            <span>8.0</span>
+            <span>6.5</span>
+            <span>5.0</span>
+            <span>3.5</span>
+            <span>1.5</span>
+          </div>
+          <div class="alt-track">
+            <div class="alt-fill" id="alt-fill"></div>
+          </div>
+          <div class="alt-ticks">
+            <div class="alt-tick"></div>
+            <div class="alt-tick"></div>
+            <div class="alt-tick"></div>
+            <div class="alt-tick"></div>
+            <div class="alt-tick"></div>
+          </div>
+        </div>
+        <div class="alt-readout" id="alt-readout">2.6</div>
+        <div class="alt-unit">UNITS</div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════ -->
+    <!-- RIGHT panel — Mission / Telemetry / Swarm           -->
+    <!-- ════════════════════════════════════════════════════ -->
+    <aside class="side-panel right-panel">
+
+      <!-- Mission Priority -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Mission Priority</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+        <div class="priority-row">
+          <button class="btn-priority" data-priority="CRITICAL" id="prio-critical">CRITICAL</button>
+          <button class="btn-priority" data-priority="HIGH"     id="prio-high">HIGH</button>
+          <button class="btn-priority active" data-priority="MEDIUM" id="prio-medium">MEDIUM</button>
+          <button class="btn-priority" data-priority="LOW"      id="prio-low">LOW</button>
+        </div>
+        <div class="priority-hint">Higher priority reduces threat avoidance cost</div>
+        </div>
+      </div>
+
+      <!-- Mission Control -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Mission Control</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+        <div class="btn-grid">
+          <button class="btn primary" id="btn-start">START MISSION</button>
+          <button class="btn" id="btn-target">SET TARGET</button>
+          <button class="btn active" id="btn-path"
+            style="color:#00ccff;border-color:rgba(0,204,255,0.2)">HIDE PATH</button>
+          <button class="btn" id="btn-manual">MANUAL CONTROL</button>
+          <button class="btn danger" id="btn-reset">ABORT</button>
+        </div>
+        </div>
+      </div>
+
+      <!-- Mission Status -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Mission Status</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+        <span class="status-badge idle" id="status-badge">IDLE</span>
+        </div>
+      </div>
+
+      <!-- Threat Detection -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Threat Detection</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+        <div class="threat-indicator" id="threat-indicator">SECTOR CLEAR</div>
+        </div>
+      </div>
+
+      <!-- Telemetry -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Telemetry</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+
+        <div class="stat-row">
+          <span class="stat-key">Control Mode</span>
+          <span class="mode-badge auto" id="mode-badge">AUTO</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Position</span>
+          <span class="stat-val" id="stat-pos">(1, 1)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Target</span>
+          <span class="stat-val" id="stat-target">— not set —</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Steps</span>
+          <span class="stat-val" id="stat-steps">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Mission Time</span>
+          <span class="stat-val" id="stat-time">00:00</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Replans</span>
+          <span class="stat-val txt-threat" id="stat-replans">0</span>
+        </div>
+
+        <div class="stat-divider"></div>
+
+        <div class="stat-row">
+          <span class="stat-key">Distance Flown</span>
+          <span class="stat-val hi" id="stat-dist">0 m</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Remaining</span>
+          <span class="stat-val" id="stat-remaining">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">Total Path</span>
+          <span class="stat-val" id="stat-total-path">—</span>
+        </div>
+        </div>
+      </div>
+
+      <!-- Power — Battery + Fuel -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Power</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+
+        <div class="battery-label-row">
+          <span class="stat-key">Battery Charge</span>
+          <span class="stat-val" id="battery-label">100%</span>
+        </div>
+        <div class="battery-track">
+          <div class="battery-fill high" id="battery-fill" style="width:100%"></div>
+        </div>
+
+
+
+        <div class="battery-label-row" style="margin-top:8px">
+          <span class="stat-key">Threat Intensity</span>
+          <span class="stat-val" id="intensity-label">0%</span>
+        </div>
+        <div class="battery-track">
+          <div class="intensity-fill" id="intensity-fill" style="width:0%"></div>
+        </div>
+        </div>
+      </div>
+
+      <!-- Dynamic Threats -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Dynamic Threats</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+
+        <div class="spec-item">
+          <label class="spec-label">Threat Speed</label>
+          <div class="spec-input-row">
+            <input type="range" id="threat-speed" min="0.2" max="4.0" step="0.1" value="1.2" />
+            <span class="spec-val" id="val-threat-speed">1.2</span>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <label class="spec-label" for="threat-enable">Moving Threats</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="threat-enable" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        </div>
+      </div>
+
+
+      <!-- Swarm Control -->
+      <div class="accordion-item open">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Swarm Control</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+
+        <div class="spec-item">
+          <label class="spec-label">Swarm Size</label>
+          <div class="spec-input-row">
+            <input type="range" id="swarm-size" min="1" max="3" step="1" value="2" />
+            <span class="spec-val" id="val-swarm-size">2</span>
+          </div>
+        </div>
+
+        <div class="spec-item">
+          <label class="spec-label">Formation</label>
+          <select id="swarm-formation" class="spec-select">
+            <option value="FREE">FREE</option>
+            <option value="DELTA" selected>DELTA</option>
+            <option value="LINE">LINE</option>
+            <option value="ORBIT">ORBIT</option>
+          </select>
+        </div>
+
+        <div class="role-legend">
+          <span class="role-pill role-scout">SCOUT</span>
+          <span class="role-pill role-strike">STRIKE</span>
+          <span class="role-pill role-relay">RELAY</span>
+          <span class="role-pill role-rescue">RESCUE</span>
+        </div>
+
+        <div class="btn-grid" style="margin-top:8px">
+          <button class="btn primary" id="btn-launch-swarm">LAUNCH SWARM</button>
+          <button class="btn danger"  id="btn-abort-swarm">ABORT SWARM</button>
+        </div>
+
+        <!-- Swarm telemetry -->
+        <div class="swarm-tbl-wrap">
+          <table class="swarm-tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>Role</th><th>Pos</th><th>Bat</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="swarm-tbl-body">
+              <tr><td colspan="5" style="text-align:center;opacity:0.4">No swarm active</td></tr>
+            </tbody>
+          </table>
+        </div>
+        </div>
+      </div>
+
+      <!-- Tactical Spawner -->
+      <div class="accordion-item open" id="threat-inspector-section">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Tactical Spawner</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+
+        <div class="spec-item" style="margin-bottom:8px;">
+          <label class="spec-label">Unit Type</label>
+          <select id="spawn-type" class="spec-select" style="width: 100%;">
+            <option value="ENEMY_DRONE">Enemy Drone (Moving)</option>
+            <option value="ANTI_AIR">Anti-Air Battery (Stationary)</option>
+            <option value="PERSONNEL">Ground Enemies (Stationary)</option>
+          </select>
+        </div>
+
+        <div class="btn-grid" style="grid-template-columns:1fr 1fr;display:grid;gap:5px;margin-bottom:8px">
+          <button class="btn" id="btn-select-threat">SELECT UNIT</button>
+          <button class="btn primary" id="btn-add-threat">+ SPAWN</button>
+        </div>
+
+        <div id="threat-inspector-empty" class="threat-inspector-empty">
+          Enable threats, then click<br><b>SELECT UNIT</b> and click<br>a unit in the viewport.
+        </div>
+
+        <div id="threat-inspector-form" style="display:none;flex-direction:column;gap:7px">
+
+          <div class="threat-inspector-header">
+            <span class="threat-id-badge" id="threat-id-badge">THREAT #—</span>
+            <button class="btn danger btn-sm" id="btn-delete-threat">✕ DELETE</button>
+          </div>
+
+          <div class="threat-pos-row">
+            <span class="spec-label">Position</span>
+            <span class="threat-pos-val" id="threat-edit-pos">—</span>
+          </div>
+
+          <div class="threat-editor-divider"></div>
+
+          <div class="spec-item">
+            <label class="spec-label">Speed (cells/s)</label>
+            <div class="spec-input-row">
+              <input type="range" id="threat-edit-speed" min="0.2" max="5.0" step="0.1" value="1.2" class="threat-slider" />
+              <span class="spec-val" id="val-threat-edit-speed">1.2</span>
+            </div>
+          </div>
+
+          <div class="spec-item">
+            <label class="spec-label">Direction (°)</label>
+            <div class="spec-input-row">
+              <input type="range" id="threat-edit-angle" min="0" max="359" step="1" value="0" class="threat-slider" />
+              <span class="spec-val" id="val-threat-edit-angle">0°</span>
+            </div>
+          </div>
+
+          <div class="spec-item">
+            <label class="spec-label">Intensity</label>
+            <div class="spec-input-row">
+              <input type="range" id="threat-edit-intensity" min="0.1" max="1.0" step="0.05" value="0.75" class="threat-slider" />
+              <span class="spec-val" id="val-threat-edit-intensity">0.75</span>
+            </div>
+          </div>
+
+          <div class="spec-item">
+            <label class="spec-label">Radius (cells)</label>
+            <div class="spec-input-row">
+              <input type="range" id="threat-edit-radius" min="1" max="3" step="1" value="1" class="threat-slider" />
+              <span class="spec-val" id="val-threat-edit-radius">1</span>
+            </div>
+          </div>
+
+          <button class="btn" id="btn-freeze-threat" style="margin-top:2px">⏸ FREEZE</button>
+        </div>
+        </div>
+      </div>
+
+      <!-- Moving Target Config -->
+      <div class="accordion-item" id="acc-moving-target">
+        <button class="accordion-header" aria-expanded="false">
+          <span>Moving Target</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+          <div class="spec-item">
+            <label class="spec-label">Upload Photo</label>
+            <input type="file" id="moving-target-upload" accept="image/*" class="spec-select" style="padding: 3px;" />
+          </div>
+
+          <div class="toggle-row" style="margin-top: 8px;">
+            <label class="spec-label" for="moving-target-enable">Enable Moving Target</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="moving-target-enable" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="spec-item" style="margin-top: 8px;">
+            <label class="spec-label">Target Speed</label>
+            <div class="spec-input-row">
+              <input type="range" id="moving-target-speed" min="0.2" max="3.0" step="0.1" value="1.0" />
+              <span class="spec-val" id="val-moving-target-speed">1.0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Environment Setup -->
+      <div class="accordion-item open" id="environment-setup-section">
+        <button class="accordion-header" aria-expanded="true">
+          <span>Environment Setup</span>
+          <span class="acc-chevron">▾</span>
+        </button>
+        <div class="accordion-body">
+          <div class="btn-grid" style="grid-template-columns: 1fr; margin-bottom: 8px;">
+            <button class="btn primary" id="btn-regen" style="width:100%; margin-bottom:4px;">[A] RANDOM GENERATION</button>
+            <button class="btn primary" id="btn-open-map" style="width:100%; margin-bottom:4px;">[B] REAL-WORLD MAP</button>
+            <button class="btn primary" id="btn-clear-grid" style="width:100%; margin-bottom:4px;">[C] CUSTOM MAP (CLEAR)</button>
+          </div>
+
+          <div class="threat-editor-divider"></div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
+            <button class="btn" id="btn-terrain-edit" style="flex:1;">EDIT TERRAIN</button>
+            <div style="display:flex; gap: 4px; margin-left: 8px;">
+              <button class="btn" id="btn-undo-terrain" style="padding: 4px 8px;" title="Undo">↶</button>
+              <button class="btn" id="btn-redo-terrain" style="padding: 4px 8px;" title="Redo">↷</button>
+            </div>
+          </div>
+
+          <div class="terrain-palette" id="terrain-palette">
+            <button class="btn-terrain-type active" data-type="0" id="ttype-empty"><span>CLEAR</span></button>
+            <button class="btn-terrain-type" data-type="1" id="ttype-obstacle"><span>OBSTACLE</span></button>
+            <button class="btn-terrain-type" data-type="2" id="ttype-threat"><span>THREAT</span></button>
+            <button class="btn-terrain-type" data-type="4" id="ttype-safe"><span>SAFE ZONE</span></button>
+            <button class="btn-terrain-type" data-type="6" id="ttype-urban"><span>BUILDING</span></button>
+            <button class="btn-terrain-type" data-type="7" id="ttype-forest"><span>FOREST</span></button>
+            <button class="btn-terrain-type" data-type="8" id="ttype-river"><span>RIVER</span></button>
+          </div>
+
+          <div class="obs-height-row" id="obs-height-row">
+            <label class="spec-label">Height (Obstacles/Buildings)</label>
+            <div class="spec-input-row">
+              <input type="range" id="terrain-obs-height" min="1.0" max="8.0" step="0.1" value="2.0" />
+              <span class="spec-val" id="val-obs-height">2.0</span>
+            </div>
+          </div>
+
+          <div class="terrain-hint" id="terrain-hint">CLICK OR DRAG TO PAINT</div>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+</div><!-- .app-shell -->
+
+  <!-- Map Selection Modal -->
+  <div id="map-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center;">
+    <div class="modal-content" style="width: 80vw; height: 80vh; display: flex; flex-direction: column; border: 1px solid var(--accent); box-shadow: 0 0 20px rgba(0,255,136,0.2);">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--panel-bg); border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0; color: var(--text-color); font-family: monospace;">Select Region (Approx 400x350m)</h3>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="map-search-input" placeholder="Search Location (e.g. London)" class="spec-number" style="width: 200px; padding: 4px;" />
+          <button id="btn-map-search" class="btn">SEARCH</button>
+          <button id="btn-close-map" class="btn danger btn-sm" style="margin-left: 10px;">✕ CLOSE</button>
+        </div>
+      </div>
+      <div id="leaflet-map" style="flex: 1; width: 100%; background: #222;"></div>
+      <div class="modal-footer" style="padding: 10px; background: var(--panel-bg); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px;">
+        <span id="map-status" style="align-self: center; color: var(--accent); flex: 1; font-family: monospace; font-size: 12px;">Pan and zoom to a location.</span>
+        <button id="btn-import-map" class="btn primary">IMPORT TO GRID</button>
+      </div>
+    </div>
+  </div>
+
+<!-- Three.js (local vendor) -->
+<script src="js/vendor/three.min.js"></script>
+<script src="js/vendor/OrbitControls.js"></script>
+
+<!-- Simulation modules — order matters -->
+<script src="js/config.js"></script>
+<script src="js/grid.js"></script>
+<script src="js/navigation.js"></script>
+<script src="js/drone.js"></script>
+<script src="js/threats.js"></script>
+<script src="js/swarm.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/map_importer.js"></script>
+<script src="js/main.js"></script>
+
+<!-- Swarm size slider live readout -->
+<script>
+  document.getElementById('swarm-size').addEventListener('input', function() {
+    document.getElementById('val-swarm-size').textContent = this.value;
+  });
+</script>
+
+<!-- Live clock -->
+<script>
+  (function () {
+    const el = document.getElementById('sys-clock');
+    function tick() {
+      el.textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>
+
+<!-- Accordion toggle -->
+<script>
+  (function () {
+    document.querySelectorAll('.accordion-header').forEach(function (header) {
+      header.addEventListener('click', function () {
+        const item     = this.closest('.accordion-item');
+        const isOpen   = item.classList.toggle('open');
+        this.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
